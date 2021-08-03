@@ -5,6 +5,11 @@ import (
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc"
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
 	"github.com/qiansheng91/jaeger-sls/sls_store"
+	"time"
+)
+
+const (
+	DefaultLookBack = 7
 )
 
 var (
@@ -13,6 +18,7 @@ var (
 	accessSecret string
 	project      string
 	instance     string
+	lookBack     int64
 )
 
 func main() {
@@ -21,6 +27,7 @@ func main() {
 	flag.StringVar(&accessSecret, "sls-access-secret", "", "The AccessKey secret of your Alibaba Cloud account.")
 	flag.StringVar(&project, "sls-project", "", "The name of the Log Service project.")
 	flag.StringVar(&instance, "sls-instance", "", "The name of the trace instance.")
+	flag.Int64Var(&lookBack, "sls-max-look-back", DefaultLookBack, "Maximum time frame for searching data. (Unit: Day)")
 	flag.Parse()
 
 	checkParameter(endpoint, accessKeyID, accessSecret, project, instance)
@@ -31,6 +38,7 @@ func main() {
 		accessSecret,
 		project,
 		instance,
+		time.Duration(lookBack)*24*time.Hour,
 	)
 
 	grpc.Serve(&shared.PluginServices{

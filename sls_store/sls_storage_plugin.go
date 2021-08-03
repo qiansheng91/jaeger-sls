@@ -4,6 +4,7 @@ import (
 	slsSdk "github.com/aliyun/aliyun-log-go-sdk"
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"time"
 )
 
 const (
@@ -17,30 +18,34 @@ type SlsJaegerStoragePlugin struct {
 	accessSecret string
 	project      string
 	instance     slsTraceInstance
+	maxLookBack  time.Duration
 }
 
 func NewSLSStorageForJaegerPlugin(endpoint string, accessKeyID string, accessSecret string,
-	project string, instance string) *SlsJaegerStoragePlugin {
+	project string, instance string, maxLookBack time.Duration) *SlsJaegerStoragePlugin {
 	return &SlsJaegerStoragePlugin{
 		endpoint:     endpoint,
 		accessKeyID:  accessKeyID,
 		accessSecret: accessSecret,
 		project:      project,
 		instance:     newSlsTraceInstance(instance),
+		maxLookBack:  maxLookBack,
 	}
 }
 
 func (s SlsJaegerStoragePlugin) ArchiveSpanReader() spanstore.Reader {
 	return &slsSpanReader{
-		client:   buildSLSSdkClient(s),
-		instance: s.instance,
+		client:      buildSLSSdkClient(s),
+		instance:    s.instance,
+		maxLookBack: s.maxLookBack,
 	}
 }
 
 func (s SlsJaegerStoragePlugin) ArchiveSpanWriter() spanstore.Writer {
 	return &slsSpanWriter{
-		client:   buildSLSSdkClient(s),
-		instance: s.instance,
+		client:      buildSLSSdkClient(s),
+		instance:    s.instance,
+		maxLookBack: s.maxLookBack,
 	}
 }
 

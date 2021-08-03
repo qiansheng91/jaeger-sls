@@ -5,11 +5,13 @@ import (
 	slsSdk "github.com/aliyun/aliyun-log-go-sdk"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"time"
 )
 
 type slsSpanReader struct {
-	client   *slsSdk.Client
-	instance slsTraceInstance
+	client      *slsSdk.Client
+	instance    slsTraceInstance
+	maxLookBack time.Duration
 }
 
 func (s slsSpanReader) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Trace, error) {
