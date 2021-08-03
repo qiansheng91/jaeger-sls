@@ -28,7 +28,7 @@ func NewSLSStorageForJaegerPlugin(endpoint string, accessKeyID string, accessSec
 		accessKeyID:  accessKeyID,
 		accessSecret: accessSecret,
 		project:      project,
-		instance:     newSlsTraceInstance(instance),
+		instance:     newSlsTraceInstance(project, instance),
 		maxLookBack:  maxLookBack,
 	}
 }
