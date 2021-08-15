@@ -1,70 +1,125 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"github.com/aliyun/aliyun-log-jaeger/sls_store"
+	"github.com/hashicorp/go-hclog"
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc"
 	"github.com/jaegertracing/jaeger/plugin/storage/grpc/shared"
-	"github.com/qiansheng91/jaeger-sls/sls_store"
+	"github.com/spf13/viper"
 	"time"
 )
 
 const (
-	DefaultLookBack = 7
+	DefaultLookBack = 6
 )
 
-var (
-	endpoint     string
-	accessKeyID  string
-	accessSecret string
-	project      string
-	instance     string
-	lookBack     int64
-)
+var configPath string
+
+type Configuration struct {
+	Endpoint     string        `yaml:"endpoint"`
+	AccessKeyID  string        `yaml:"accessKeyId"`
+	AccessSecret string        `yaml:"accessSecret"`
+	Project      string        `yaml:"project"`
+	Instance     string        `yaml:"instance"`
+	MaxLookBack  time.Duration `yaml:maxLookBack`
+}
+
+var logger = hclog.New(&hclog.LoggerOptions{
+	Level:      hclog.Info,
+	Name:       "aliyun-log-jaeger-plugin",
+	JSONFormat: true,
+})
 
 func main() {
-	flag.StringVar(&endpoint, "sls-endpoint", "", "The endpoint of Log Service. The format is ${project}.${region-endpoint}")
-	flag.StringVar(&accessKeyID, "sls-access_key-id", "", "The AccessKey ID of your Alibaba Cloud account.")
-	flag.StringVar(&accessSecret, "sls-access-secret", "", "The AccessKey secret of your Alibaba Cloud account.")
-	flag.StringVar(&project, "sls-project", "", "The name of the Log Service project.")
-	flag.StringVar(&instance, "sls-instance", "", "The name of the trace instance.")
-	flag.Int64Var(&lookBack, "sls-max-look-back", DefaultLookBack, "Maximum time frame for searching data. (Unit: Day)")
+	flag.StringVar(&configPath, "config", "", "Path to the alibaba log jaeger plugin's configuration file")
 	flag.Parse()
 
-	checkParameter(endpoint, accessKeyID, accessSecret, project, instance)
+	configuration, err := initialParameters(configPath, logger)
+	if err != nil {
+		logger.Error("Fatal error config file: %w\n", err)
+		return
+	}
 
 	var plugin = sls_store.NewSLSStorageForJaegerPlugin(
-		endpoint,
-		accessKeyID,
-		accessSecret,
-		project,
-		instance,
-		time.Duration(lookBack)*24*time.Hour,
+		configuration.Endpoint,
+		configuration.AccessKeyID,
+		configuration.AccessSecret,
+		configuration.Project,
+		configuration.Instance,
+		configuration.MaxLookBack,
+		logger,
 	)
 
 	grpc.Serve(&shared.PluginServices{
-		Store:        plugin,
-		ArchiveStore: plugin,
+		Store: plugin,
 	})
+
+	logger.Info("SLS jaeger plugin initialized Successfully")
 }
 
-func checkParameter(endpoint string, accessKeyID string, accessSecret string, project string, instance string) {
-	if endpoint == "" {
-		panic("The Endpoint can't be empty")
+func initialParameters(configPath string, logger hclog.Logger) (*Configuration, error) {
+	v := viper.New()
+	v.AutomaticEnv()
+
+	if configPath != "" {
+		v.SetConfigFile(configPath)
+		if err := v.ReadInConfig(); err != nil {
+			logger.Error("Failed to read file.", "Exception", err)
+			return nil, err
+		}
 	}
 
-	if accessKeyID == "" {
-		panic("The access key id can't be empty")
+	configuration := &Configuration{}
+	if err := configuration.InitFromViper(v); err != nil {
+		return nil, err
+	} else {
+		return configuration, nil
+	}
+}
+
+func (c *Configuration) InitFromViper(v *viper.Viper) error {
+	c.AccessSecret = v.GetString("ACCESS_KEY_SECRET")
+	if c.AccessSecret == "" {
+		logger.Error("The AccessSecret can't be empty")
+		return errors.New("The AccessSecret can't be empty")
 	}
 
-	if accessSecret == "" {
-		panic("The access secret can't be empty")
+	c.AccessKeyID = v.GetString("ACCESS_KEY_ID")
+	if c.AccessKeyID == "" {
+		logger.Error("The access key id can't be empty")
+		return errors.New("The access key id can't be empty")
 	}
 
-	if project == "" {
-		panic("The access secret can't be empty")
+	c.Project = v.GetString("PROJECT")
+	if c.Project == "" {
+		logger.Error("The project name can't be empty")
+		return errors.New("The project name can't be empty")
 	}
 
-	if instance == "" {
-		panic("The access secret can't be empty")
+	c.Endpoint = v.GetString("ENDPOINT")
+	if c.Endpoint == "" {
+		logger.Error("The endpoint can't be empty")
+		return errors.New("The endpoint can't be empty")
 	}
+
+	c.Instance = v.GetString("INSTANCE")
+	if c.Instance == "" {
+		logger.Error("The instance can't be empty")
+		return errors.New("The instance can't be empty")
+	}
+
+	lookBack := v.GetInt32("MAX_LOOK_BACK")
+	if lookBack == 0 {
+		lookBack = DefaultLookBack
+	}
+
+	if lookBack > 3*24 {
+		logger.Warn("Setting a larger value for MAX_LOOK_BACK will affect the query efficiency.", "MAX_LOOK_BACK", lookBack)
+	}
+
+	c.MaxLookBack = time.Duration(lookBack) * time.Hour
+	logger.Info("Parameters", "AccessSecret", c.AccessSecret, "AccessKeyID", c.AccessKeyID, "Project", c.Project, "Instance", c.Instance, "Endpoint", c.Endpoint, "MaxLookBack", c.MaxLookBack)
+	return nil
 }
